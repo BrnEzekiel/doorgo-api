@@ -1,0 +1,293 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // This line instructs Prisma Migrate to use the DIRECT_URL
+  directUrl = env("DIRECT_URL")
+}
+
+
+model User {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  email     String   @unique
+  password  String?
+  firstName String? // Added firstName
+  lastName  String? // Added lastName
+  phone     String?   @unique
+  otp       String?
+  otpExpires DateTime?
+  // For student users
+  isStudent Boolean  @default(false)
+  university String? // Optional, for students
+  isApproved Boolean @default(false)
+  balance    Decimal  @default(0.00) @db.Decimal(10, 2) // For service providers to track earnings
+
+  // Role for the user (student, landlord, service_provider, admin, caretaker)
+  // This will be used for authentication and authorization
+  role      String[] @default(["student"])
+
+  // Relationships
+  // If a user is a student, they can have bookings
+    bookings        Booking[] @relation("StudentBookings")
+    leadBookings    Booking[] @relation("LeadTenant")
+    // If a user is a landlord, they can own hostels
+  hostels         Hostel[] @relation("HostelOwner")
+  // If a user is a caretaker, they can manage a hostel
+  caretakerFor    Hostel?  @relation("HostelCaretaker")
+  // If a user is a service provider, they can have services
+  services        Service[]
+  serviceBookings ServiceBooking[] @relation("ServiceBookingStudent")
+  notifications   Notification[]
+  rentStatus      RentStatus[]
+  utilityBills    UtilityBill[]
+  leases          Lease[]
+  maintenanceRequests MaintenanceRequest[]
+  withdrawalRequests  WithdrawalRequest[] // Inverse relation for WithdrawalRequest
+}
+
+model Hostel {
+  id           String   @id @default(uuid())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  name         String
+  university   String   // Link to university (dropdown: UoN, JKUAT, KU, etc.)
+  propertyType String   @default("hostel") // 'hostel', 'apartment', 'shared_house'
+  images       String[] @default([]) // New field for multiple image URLs
+  description  String? // New field for hostel description
+  amenities    String[] @default([]) // New field for hostel-level amenities
+  utilityTypes String[] @default([]) // New field for available utility types (e.g., Water, Electricity, WiFi)
+  paymentMethods String[] @default([]) // New field for accepted payment methods
+  extraChargesDescription String? // New field for how extra charges are handled
+  ownerId      String
+  owner        User     @relation("HostelOwner", fields: [ownerId], references: [id])
+  caretakerId  String?  @unique // Added for caretaker relationship
+  caretaker    User?    @relation("HostelCaretaker", fields: [caretakerId], references: [id])
+  rooms        Room[]
+  isApproved Boolean @default(false)
+  rentStatus   RentStatus[]
+  utilityBills UtilityBill[]
+  leases       Lease[]
+  maintenanceRequests MaintenanceRequest[]
+  announcements Announcement[]
+}
+
+model Room {
+  id            String   @id @default(uuid())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  roomNumber    String
+  monthlyRent   Float
+  semesterRent  Float? // Optional, if semester-based
+  maxOccupants  Int
+  currentOccupants Int @default(0) // For occupancy tracking
+  amenities     String[] // e.g., ["WiFi", "water", "security"]
+  hostelId      String
+  hostel        Hostel   @relation(fields: [hostelId], references: [id])
+  bookings      Booking[]
+}
+
+model Service {
+  id           String   @id @default(uuid())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  name         String
+  description  String?
+  images       String[] // Added for service images
+  price        Float
+  providerId   String
+  provider     User     @relation(fields: [providerId], references: [id])
+  categoryId   String
+  category     ServiceCategory @relation(fields: [categoryId], references: [id])
+  bookings     ServiceBooking[]
+  isApproved   Boolean  @default(true)
+}
+
+model Booking {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tenants      User[]   @relation("StudentBookings")
+  leadTenantId String
+  leadTenant   User     @relation("LeadTenant", fields: [leadTenantId], references: [id])
+  roomId       String
+  room         Room     @relation(fields: [roomId], references: [id])
+  startDate    DateTime
+  endDate      DateTime
+  status       String   @default("pending") // pending, confirmed, cancelled, completed
+  // semester-aware fields
+  billingCycle String @default("monthly") // 'monthly' | 'semester'
+  invoices     Invoice[]
+  checklist    Checklist?
+}
+
+model ServiceBooking {
+  id                 String   @id @default(uuid())
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  serviceId          String
+  service            Service  @relation(fields: [serviceId], references: [id])
+  studentId          String
+  student            User     @relation("ServiceBookingStudent", fields: [studentId], references: [id])
+  bookingTime        DateTime
+  status             String   @default("pending") // pending, confirmed, cancelled, completed
+  amountPaid         Float
+  paymentId          String?  @unique // To link with a payment
+  payment            Payment? @relation("ServiceBookingPayment", fields: [paymentId], references: [id])
+  confirmationStatus String   @default("pending") // pending, confirmed_by_student, confirmed_by_provider
+  releaseStatus      String   @default("pending") // pending, released
+}
+
+model Invoice {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  bookingId String
+  booking   Booking  @relation(fields: [bookingId], references: [id])
+  amount    Float
+  dueDate   DateTime
+  status    String   @default("pending") // pending, paid, overdue
+  payments  Payment[]
+}
+
+model Payment {
+  id               String   @id @default(uuid())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  invoiceId        String?
+  invoice          Invoice? @relation(fields: [invoiceId], references: [id])
+  serviceBookingId String?  @unique
+  serviceBooking   ServiceBooking? @relation("ServiceBookingPayment")
+  amount           Float
+  phone            String
+  status           String   @default("pending") // pending, completed, failed
+  transactionId    String?
+}
+
+model Checklist {
+  id          String   @id @default(uuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  bookingId   String   @unique
+  booking     Booking  @relation(fields: [bookingId], references: [id])
+  photoUrl    String
+  damageNotes String?
+}
+
+model ServiceCategory {
+  id        String    @id @default(uuid())
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  name      String    @unique
+  services  Service[]
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  message   String
+  type      String   // e.g., 'SMS', 'EMAIL', 'PUSH'
+  sentAt    DateTime?
+  readAt    DateTime?
+}
+
+model RentStatus {
+  id              String   @id @default(uuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  hostelId        String
+  hostel          Hostel   @relation(fields: [hostelId], references: [id])
+  rentAmount      Float
+  nextDueDate     DateTime
+  paymentStatus   String   @default("Due") // e.g., "Due", "Paid", "Overdue"
+  lastPaymentDate DateTime?
+  payments        RentPayment[]
+}
+
+model RentPayment {
+  id           String   @id @default(uuid())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  rentStatusId String
+  rentStatus   RentStatus @relation(fields: [rentStatusId], references: [id])
+  amountPaid   Float
+  paymentDate  DateTime
+  reference    String?
+}
+
+model UtilityBill {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  hostelId  String
+  hostel    Hostel   @relation(fields: [hostelId], references: [id])
+  type      String   // e.g., "Water", "Electricity", "Garbage"
+  amount    Float
+  dueDate   DateTime
+  status    String   @default("Due") // e.g., "Due", "Paid"
+}
+
+model Lease {
+  id          String   @id @default(uuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  hostelId    String
+  hostel      Hostel   @relation(fields: [hostelId], references: [id])
+  startDate   DateTime
+  endDate     DateTime
+  documentUrl String
+  status      String   @default("Active") // e.g., "Active", "Expired", "Terminated"
+}
+
+model MaintenanceRequest {
+  id          String   @id @default(uuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  hostelId    String
+  hostel      Hostel   @relation(fields: [hostelId], references: [id])
+  type        String   // e.g., "Plumbing", "Electrical", "Structural"
+  description String
+  status      String   @default("Pending") // e.g., "Pending", "In Progress", "Resolved"
+  attachments String[]
+}
+
+model Announcement {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  hostelId  String
+  hostel    Hostel   @relation(fields: [hostelId], references: [id])
+  title     String
+  content   String
+}
+
+model WithdrawalRequest {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  amount    Decimal  @db.Decimal(10, 2)
+  commission Decimal @db.Decimal(10, 2)
+  netAmount Decimal  @db.Decimal(10, 2)
+  paymentMethod String // e.g., M-Pesa
+  status    String   @default("pending") // pending, approved, rejected, completed
+}
