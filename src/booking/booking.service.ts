@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
 import { NotificationService } from '../notification/notification.service';
+import { BookingStatus } from '@prisma/client';
 
 @Injectable()
 export class BookingService {
@@ -46,6 +47,7 @@ export class BookingService {
         startDate,
         endDate,
         billingCycle,
+        status: BookingStatus.PENDING,
       },
       include: {
         room: true,
@@ -59,10 +61,12 @@ export class BookingService {
       data: { currentOccupants: { increment: tenantIds.length } },
     });
 
-    await this.notificationService.sendWhatsAppNotification(
-      booking.leadTenant.phone,
-      `Your booking for room ${booking.room.roomNumber} in ${booking.room.hostelId} has been confirmed.`
-    );
+    if (booking.leadTenant.phone) {
+      await this.notificationService.sendWhatsAppNotification(
+        booking.leadTenant.phone,
+        `Your booking for room ${booking.room.roomNumber} in ${booking.room.hostelId} has been confirmed.`
+      );
+    }
 
     return booking;
   }
@@ -72,27 +76,104 @@ export class BookingService {
       include: {
         tenants: true,
         leadTenant: true,
-        room: true,
+        room: {
+          include: {
+            hostel: true,
+          },
+        },
       },
     });
   }
 
-  findOne(id: string) {
-    return this.prisma.booking.findUnique({
+  findByTenantId(tenantId: string) {
+    return this.prisma.booking.findMany({
+      where: { leadTenantId: tenantId },
+      include: {
+        tenants: true,
+        leadTenant: true,
+        room: {
+          include: {
+            hostel: true,
+          },
+        },
+      },
+    });
+  }
+
+  findByLandlordId(landlordId: string) {
+    return this.prisma.booking.findMany({
+      where: {
+        room: {
+          hostel: {
+            ownerId: landlordId,
+          },
+        },
+      },
+      include: {
+        tenants: true,
+        leadTenant: true,
+        room: {
+          include: {
+            hostel: true,
+          },
+        },
+      },
+    });
+  }
+
+  async findOne(id: string, user: any) {
+    const booking = await this.prisma.booking.findUnique({
       where: { id },
       include: {
         tenants: true,
         leadTenant: true,
-        room: true,
+        room: {
+          include: {
+            hostel: true,
+          },
+        },
       },
     });
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    const isTenantInBooking = booking.tenants.some(tenant => tenant.id === user.id);
+    const isHostelOwner = booking.room.hostel.ownerId === user.id;
+
+    if (!isTenantInBooking && !isHostelOwner) {
+      throw new UnauthorizedException('You are not authorized to view this booking.');
+    }
+
+    return booking;
   }
 
-  async update(id: string, updateBookingDto: UpdateBookingDto) {
+  async update(id: string, updateBookingDto: UpdateBookingDto, user: any) {
     const { status } = updateBookingDto;
+
+    const booking = await this.prisma.booking.findUnique({
+      where: { id },
+      include: {
+        room: {
+          include: {
+            hostel: true,
+          },
+        },
+      },
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    if (booking.room.hostel.ownerId !== user.id) {
+      throw new UnauthorizedException('You are not authorized to update this booking.');
+    }
+
     return this.prisma.booking.update({
       where: { id },
-      data: { status },
+      data: { status: status as BookingStatus },
     });
   }
 
@@ -107,7 +188,7 @@ export class BookingService {
 
     await this.prisma.booking.update({
       where: { id },
-      data: { status: 'cancelled' },
+      data: { status: BookingStatus.CANCELLED },
     });
 
     // Update room occupancy
@@ -117,6 +198,84 @@ export class BookingService {
     });
 
     return { message: 'Booking cancelled successfully' };
+  }
+
+  async updateBookingRoomAssignment(bookingId: string, newRoomId: string) {
+    return this.prisma.$transaction(async (prisma) => {
+      const booking = await prisma.booking.findUnique({
+        where: { id: bookingId },
+        include: { tenants: true, room: true },
+      });
+
+      if (!booking) {
+        throw new NotFoundException(`Booking with ID ${bookingId} not found.`);
+      }
+
+      const oldRoomId = booking.roomId;
+      const numberOfTenants = booking.tenants.length;
+
+      // Decrement occupants from old room
+      await prisma.room.update({
+        where: { id: oldRoomId },
+        data: { currentOccupants: { decrement: numberOfTenants } },
+      });
+
+      // Increment occupants in new room
+      await prisma.room.update({
+        where: { id: newRoomId },
+        data: { currentOccupants: { increment: numberOfTenants } },
+      });
+
+      // Update booking with new room ID
+      const updatedBooking = await prisma.booking.update({
+        where: { id: bookingId },
+        data: { roomId: newRoomId },
+      });
+
+      return updatedBooking;
+    });
+  }
+
+  async updateBookingTenants(bookingId: string, newTenantIds: string[]) {
+    return this.prisma.$transaction(async (prisma) => {
+      const booking = await prisma.booking.findUnique({
+        where: { id: bookingId },
+        include: { tenants: true, room: true },
+      });
+
+      if (!booking) {
+        throw new NotFoundException(`Booking with ID ${bookingId} not found.`);
+      }
+
+      // Calculate changes in occupants
+      const oldNumberOfTenants = booking.tenants.length;
+      const newNumberOfTenants = newTenantIds.length;
+      const occupantDifference = newNumberOfTenants - oldNumberOfTenants;
+
+      // Check new room capacity
+      if (booking.room.currentOccupants + occupantDifference > booking.room.maxOccupants) {
+        throw new BadRequestException('Updating tenants exceeds room capacity.');
+      }
+
+      // Update tenants in the booking
+      const updatedBooking = await prisma.booking.update({
+        where: { id: bookingId },
+        data: {
+          tenants: {
+            set: newTenantIds.map(id => ({ id })), // Disconnect old and connect new
+          },
+        },
+        include: { tenants: true, room: true },
+      });
+
+      // Update room occupancy
+      await prisma.room.update({
+        where: { id: booking.roomId },
+        data: { currentOccupants: { increment: occupantDifference } },
+      });
+
+      return updatedBooking;
+    });
   }
 
   async getHostelOccupancy(hostelId: string) {

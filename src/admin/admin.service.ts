@@ -1,11 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { HostelService } from '../hostel/hostel.service';
 import { ServiceCategoryService } from '../service-category/service-category.service';
 import { BookingService } from '../booking/booking.service';
 import { UserService } from '../user/user.service';
 import { ServiceService } from '../service/service.service';
-import { UpdateStatusDto } from './dto/update-status.dto';
+
 
 @Injectable()
 export class AdminService {
@@ -125,6 +125,37 @@ export class AdminService {
       },
     });
     return suspiciousCancellations;
+  }
+
+  async getAllUsers() {
+    return this.userService.findAll();
+  }
+
+  async getBookingTrends() {
+    // This is a simplified example. In a real application, you would
+    // aggregate bookings by date and count them.
+    const bookings = await this.prisma.booking.findMany({
+      select: {
+        startDate: true,
+      },
+      orderBy: {
+        startDate: 'asc',
+      },
+    });
+
+    const bookingCounts = {};
+    bookings.forEach(booking => {
+      const date = booking.startDate.toISOString().split('T')[0]; // Group by date
+      bookingCounts[date] = (bookingCounts[date] || 0) + 1;
+    });
+
+    // Convert to array of objects for Recharts
+    const trends = Object.keys(bookingCounts).map(date => ({
+      name: date,
+      bookings: bookingCounts[date],
+    }));
+
+    return trends;
   }
 }
 

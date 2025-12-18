@@ -1,7 +1,11 @@
-import { Controller, Get, Param, Patch, Delete, Body, Put } from '@nestjs/common';
+import { Controller, Get, Param, Patch, Delete, UseGuards } from '@nestjs/common'; // Added UseGuards
 import { AdminService } from './admin.service';
-import { UpdateStatusDto } from './dto/update-status.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'; // Import JwtAuthGuard
+import { RolesGuard } from '../common/guards/roles.guard'; // Import RolesGuard
+import { Roles } from '../common/decorators/roles.decorator'; // Import Roles decorator
 
+@UseGuards(JwtAuthGuard, RolesGuard) // Apply guards at controller level
+@Roles('admin') // Require 'admin' role for all endpoints in this controller
 @Controller('admin')
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
@@ -9,6 +13,11 @@ export class AdminController {
   @Get('dashboard-stats')
   getDashboardStats() {
     return this.adminService.getDashboardStats();
+  }
+
+  @Get('users')
+  getAllUsers() {
+    return this.adminService.getAllUsers();
   }
 
   // Moderation Endpoints
@@ -66,6 +75,11 @@ export class AdminController {
   @Get('fraud/suspicious-cancellations')
   detectSuspiciousCancellations() {
     return this.adminService.detectSuspiciousCancellations();
+  }
+
+  @Get('booking-trends')
+  getBookingTrends() {
+    return this.adminService.getBookingTrends();
   }
 }
 

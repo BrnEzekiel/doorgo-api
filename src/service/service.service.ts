@@ -2,7 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
-import { CloudinaryService } from '../cloudinary/cloudinary.service'; // Import CloudinaryService
+import { CloudinaryService } from '../cloudinary/cloudinary.service';
+import { Prisma, Service } from '@prisma/client'; // Import Prisma and Service
 
 @Injectable()
 export class ServiceService {
@@ -21,12 +22,33 @@ export class ServiceService {
     return this.prisma.service.create({ data: createServiceDto });
   }
 
-  findAll() {
-    return this.prisma.service.findMany({ include: { category: true, provider: true } });
+  async findAll() {
+    const services = await this.prisma.service.findMany({
+      include: {
+        category: true,
+        provider: true,
+      },
+    });
+
+    // Custom sorting to prioritize services with active boosts
+    // Custom sorting to prioritize services with active boosts
+    services.sort((a, b) => {
+      // With visibilityBoosts removed from the schema, this sorting logic might need re-evaluation.
+      // For now, removing the boost-specific sorting as the field no longer exists.
+      return 0; // Maintain original order
+    });
+
+    return services;
   }
 
   findOne(id: string) {
-    return this.prisma.service.findUnique({ where: { id }, include: { category: true, provider: true } });
+    return this.prisma.service.findUnique({
+      where: { id },
+      include: {
+        category: true,
+        provider: true,
+      },
+    });
   }
 
   update(id: string, updateServiceDto: UpdateServiceDto) {

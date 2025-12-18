@@ -5,15 +5,16 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { NotificationModule } from '../notification/notification.module';
 import { JwtStrategy } from './jwt.strategy'; // Will create this next
+import { AuditModule } from '../audit/audit.module'; // Import AuditModule
 
 @Module({
   imports: [
     NotificationModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.register({
-      secret: process.env.JWT_SECRET || 'supersecret', // Use environment variable for secret
-      signOptions: { expiresIn: parseInt(process.env.JWT_EXPIRES_IN) || 3600 }, // Default to 1 hour in seconds
+      secret: process.env.JWT_ACCESS_SECRET,
     }),
+    AuditModule, // Import AuditModule
   ],
   providers: [AuthService, JwtStrategy], // Add JwtStrategy here
   controllers: [AuthController],

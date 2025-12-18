@@ -13,28 +13,47 @@ export class RentStatusService {
 
   findAll() {
     return this.prisma.rentStatus.findMany({
-      include: { user: true, hostel: true, payments: true },
+      include: { user: true, hostel: true, payments: { select: { id: true, amountPaid: true, paymentDate: true, reference: true, receiptUrl: true } } },
     });
   }
 
   findOne(id: string) {
     return this.prisma.rentStatus.findUnique({
       where: { id },
-      include: { user: true, hostel: true, payments: true },
+      include: {
+        user: true,
+        hostel: {
+          include: {
+            owner: true,
+            caretaker: true,
+          },
+        },
+        payments: { select: { id: true, amountPaid: true, paymentDate: true, reference: true, receiptUrl: true } },
+      },
     });
   }
 
   findByUser(userId: string) {
     return this.prisma.rentStatus.findMany({
       where: { userId },
-      include: { hostel: true, payments: true },
+      include: { hostel: true, payments: { select: { id: true, amountPaid: true, paymentDate: true, reference: true, receiptUrl: true } } },
+    });
+  }
+
+  findByUserAndHostels(userId: string, hostelIds: string[]) {
+    return this.prisma.rentStatus.findMany({
+      where: {
+        userId,
+        hostelId: { in: hostelIds },
+      },
+      include: { hostel: true, payments: { select: { id: true, amountPaid: true, paymentDate: true, reference: true, receiptUrl: true } } },
     });
   }
 
   findByHostel(hostelId: string) {
     return this.prisma.rentStatus.findMany({
       where: { hostelId },
-      include: { user: true, payments: true },
+      include: { user: true, payments: { select: { id: true, amountPaid: true, paymentDate: true, reference: true, receiptUrl: true } } },
     });
   }
 

@@ -31,6 +31,16 @@ export class LeaseService {
     });
   }
 
+  findByUserAndHostels(userId: string, hostelIds: string[]) {
+    return this.prisma.lease.findMany({
+      where: {
+        userId,
+        hostelId: { in: hostelIds },
+      },
+      include: { hostel: true },
+    });
+  }
+
   update(id: string, updateLeaseDto: UpdateLeaseDto) {
     return this.prisma.lease.update({
       where: { id },

@@ -5,6 +5,8 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { RequestWithdrawalDto } from './dto/request-withdrawal.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { User as AuthUser } from '../common/decorators/user.decorator';
+import { RolesGuard } from '../common/guards/roles.guard'; // Import RolesGuard
+import { Roles } from '../common/decorators/roles.decorator'; // Import Roles decorator
 
 @Controller('users') // Changed from 'user' to 'users' for RESTful consistency
 export class UserController {
@@ -15,21 +17,37 @@ export class UserController {
     return this.userService.create(createUserDto);
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
   @Get()
   findAll() {
     return this.userService.findAll();
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'tenant', 'landlord', 'service_provider', 'caretaker') // All roles can view
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.userService.findOne(id);
+  async findOne(@Param('id') id: string, @AuthUser() authUser: any) {
+    // A user can view their own profile, or an admin can view any profile
+    if (id === authUser.userId || authUser.role.includes('admin')) {
+      return this.userService.findOne(id);
+    }
+    throw new UnauthorizedException('You are not authorized to view this profile.');
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'tenant', 'landlord', 'service_provider', 'caretaker')
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
-    return this.userService.update(id, updateUserDto);
+  async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto, @AuthUser() authUser: any) {
+    // A user can update their own profile, or an admin can update any profile
+    if (id === authUser.userId || authUser.role.includes('admin')) {
+      return this.userService.update(id, updateUserDto);
+    }
+    throw new UnauthorizedException('You are not authorized to update this profile.');
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.userService.remove(id);

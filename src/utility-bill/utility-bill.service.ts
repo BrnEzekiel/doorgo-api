@@ -31,6 +31,16 @@ export class UtilityBillService {
     });
   }
 
+  findByUserAndHostels(userId: string, hostelIds: string[]) {
+    return this.prisma.utilityBill.findMany({
+      where: {
+        userId,
+        hostelId: { in: hostelIds },
+      },
+      include: { hostel: true },
+    });
+  }
+
   update(id: string, updateUtilityBillDto: UpdateUtilityBillDto) {
     return this.prisma.utilityBill.update({
       where: { id },

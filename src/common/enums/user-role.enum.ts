@@ -1,5 +1,5 @@
 export enum UserRole {
-  STUDENT = 'student',
+  TENANT = 'tenant',
   LANDLORD = 'landlord',
   SERVICE_PROVIDER = 'service_provider',
   CARETAKER = 'caretaker',

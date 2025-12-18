@@ -1,11 +1,12 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateServiceBookingDto } from './dto/create-service-booking.dto';
+import { Decimal } from '@prisma/client/runtime/library';
 import { ConfirmServiceCompletionDto } from './dto/confirm-service-completion.dto';
 import { UpdateServiceBookingDto } from './dto/update-service-booking.dto';
 import { PaymentService } from '../payment/payment.service';
 import { NotificationService } from '../notification/notification.service';
-import { Service } from '@prisma/client';
+import { Service } from '@prisma/client'; // Import Service model for typing
 
 @Injectable()
 export class ServiceBookingService {
@@ -16,22 +17,22 @@ export class ServiceBookingService {
   ) {}
 
   async createServiceBooking(createServiceBookingDto: CreateServiceBookingDto) {
-    const { serviceId, studentId, bookingTime, amountPaid } = createServiceBookingDto;
+    const { serviceId, tenantId, bookingTime, amountPaid } = createServiceBookingDto;
 
     const service = await this.prisma.service.findUnique({ where: { id: serviceId }, include: { provider: true } });
     if (!service) {
       throw new NotFoundException('Service not found');
     }
 
-    const student = await this.prisma.user.findUnique({ where: { id: studentId } });
-    if (!student) {
-      throw new NotFoundException('Student not found');
+    const tenant = await this.prisma.user.findUnique({ where: { id: tenantId } });
+    if (!tenant) {
+      throw new NotFoundException('Tenant not found');
     }
 
     const serviceBooking = await this.prisma.serviceBooking.create({
       data: {
-        service: { connect: { id: serviceId } },
-        student: { connect: { id: studentId } },
+        serviceId: serviceId, // Connect using serviceId directly
+        tenant: { connect: { id: tenantId } },
         bookingTime,
         amountPaid,
         status: 'pending',
@@ -44,21 +45,21 @@ export class ServiceBookingService {
     const payment = await this.paymentService.initiatePayment({
       serviceBookingId: serviceBooking.id,
       amount: amountPaid,
-      phone: student.phone, // Assuming student phone for payment
+      phone: tenant.phone, // Assuming tenant phone for payment
     });
 
     await this.prisma.serviceBooking.update({
       where: { id: serviceBooking.id },
-      data: { paymentId: payment.id },
+      data: { paymentId: payment.paymentId },
     });
 
     await this.notificationService.sendWhatsAppNotification(
-      student.phone,
+      tenant.phone,
       `Your service (${service.name}) has been booked for ${bookingTime.toDateString()}. Payment initiated.`
     );
     await this.notificationService.sendWhatsAppNotification(
       service.provider.phone,
-      `A new service booking for ${service.name} has been made by ${student.phone}.`
+      `A new service booking for ${service.name} has been made by ${tenant.phone}.`
     );
 
     return serviceBooking;
@@ -67,8 +68,34 @@ export class ServiceBookingService {
   findAll() {
     return this.prisma.serviceBooking.findMany({
       include: {
-        service: true,
-        student: true,
+        tenant: true,
+        payment: true,
+      },
+    });
+  }
+
+  findByTenantId(tenantId: string) {
+    return this.prisma.serviceBooking.findMany({
+      where: { tenantId },
+      include: {
+        tenant: true,
+        payment: true,
+      },
+    });
+  }
+
+  async findByProviderId(providerId: string) {
+    // First, find all services provided by this provider
+    const services = await this.prisma.service.findMany({
+      where: { providerId },
+      select: { id: true }, // Select only the ID
+    });
+    const serviceIds = services.map(s => s.id);
+
+    return this.prisma.serviceBooking.findMany({
+      where: { serviceId: { in: serviceIds } }, // Filter by service IDs
+      include: {
+        tenant: true,
         payment: true,
       },
     });
@@ -78,8 +105,7 @@ export class ServiceBookingService {
     return this.prisma.serviceBooking.findUnique({
       where: { id },
       include: {
-        service: true,
-        student: true,
+        tenant: true,
         payment: true,
       },
     });
@@ -98,40 +124,50 @@ export class ServiceBookingService {
 
     const serviceBooking = await this.prisma.serviceBooking.findUnique({
       where: { id },
-      include: { service: { include: { provider: true } }, student: true },
+      include: { tenant: true }, // Include tenant for notifications
     });
 
     if (!serviceBooking) {
       throw new NotFoundException('Service booking not found');
     }
 
+    // Explicitly fetch the service and provider for checks and notifications
+    const service = await this.prisma.service.findUnique({
+      where: { id: serviceBooking.serviceId },
+      include: { provider: true },
+    });
+    if (!service) {
+      throw new NotFoundException('Service associated with booking not found.');
+    }
+
+
     let updatedConfirmationStatus = serviceBooking.confirmationStatus;
 
-    if (role === 'student') {
-      if (serviceBooking.studentId !== actorId) {
-        throw new UnauthorizedException('Only the booked student can confirm completion.');
+    if (role === 'tenant') {
+      if (serviceBooking.tenantId !== actorId) {
+        throw new UnauthorizedException('Only the booked tenant can confirm completion.');
       }
       if (serviceBooking.confirmationStatus === 'pending') {
-        updatedConfirmationStatus = 'confirmed_by_student';
+        updatedConfirmationStatus = 'confirmed_by_tenant';
       } else if (serviceBooking.confirmationStatus === 'confirmed_by_provider') {
-        updatedConfirmationStatus = 'confirmed_by_student_and_provider';
+        updatedConfirmationStatus = 'confirmed_by_tenant_and_provider';
       }
     }
     else if (role === 'provider') {
-      if (serviceBooking.service.providerId !== actorId) {
+      if (service.provider.id !== actorId) {
         throw new UnauthorizedException('Only the service provider can confirm completion.');
       }
       if (serviceBooking.confirmationStatus === 'pending') {
         updatedConfirmationStatus = 'confirmed_by_provider';
-      } else if (serviceBooking.confirmationStatus === 'confirmed_by_student') {
-        updatedConfirmationStatus = 'confirmed_by_student_and_provider';
+      } else if (serviceBooking.confirmationStatus === 'confirmed_by_tenant') {
+        updatedConfirmationStatus = 'confirmed_by_tenant_and_provider';
       }
     } else {
       throw new BadRequestException('Invalid role for confirmation.');
     }
 
     // If both confirmed, release funds and credit provider
-    if (updatedConfirmationStatus === 'confirmed_by_student_and_provider') {
+    if (updatedConfirmationStatus === 'confirmed_by_tenant_and_provider') {
       const updatedBooking = await this.prisma.serviceBooking.update({
         where: { id },
         data: {
@@ -139,26 +175,42 @@ export class ServiceBookingService {
           status: 'completed',
           releaseStatus: 'released',
         },
-        include: { service: { include: { provider: true } } } // Include service and provider to get amountPaid and provider ID
       });
 
-      // Credit the service provider's balance
+      const COMMISSION_RATE = 0.10; // 10% commission
+      const amountPaidDecimal = new Decimal(updatedBooking.amountPaid);
+      const commissionAmountDecimal = amountPaidDecimal.times(COMMISSION_RATE);
+      const netAmountDecimal = amountPaidDecimal.minus(commissionAmountDecimal);
+
+      // Credit the service provider's balance with the net amount
       await this.prisma.user.update({
-        where: { id: updatedBooking.service.provider.id },
+        where: { id: service.provider.id },
         data: {
           balance: {
-            increment: updatedBooking.amountPaid, // Add the amount paid by the student
+            increment: netAmountDecimal, // Add the net amount to the provider's balance
           },
         },
       });
 
+      // Create a CommissionRecord
+      await this.prisma.commissionRecord.create({
+        data: {
+          serviceBooking: { connect: { id: updatedBooking.id } },
+          provider: { connect: { id: service.provider.id } },
+          amountPaid: amountPaidDecimal,
+          commissionRate: new Decimal(COMMISSION_RATE),
+          commissionAmount: commissionAmountDecimal,
+          netAmount: netAmountDecimal,
+        },
+      });
+
       await this.notificationService.sendWhatsAppNotification(
-        serviceBooking.student.phone,
-        `Your service (${serviceBooking.service.name}) is completed and funds have been released to the provider.`
+        serviceBooking.tenant.phone,
+        `Your service (${service.name}) is completed and funds have been released to the provider.`
       );
       await this.notificationService.sendWhatsAppNotification(
-        serviceBooking.service.provider.phone,
-        `Funds for service (${serviceBooking.service.name}) have been released and credited to your balance.`
+        service.provider.phone,
+        `Funds for service (${service.name}) have been released and credited to your balance.`
       );
       return { message: 'Service completed, funds released and provider balance credited.' };
     } else {
@@ -179,10 +231,19 @@ export class ServiceBookingService {
       throw new NotFoundException('Service booking not found');
     }
 
+    // Fetch service for notification details
+    const service = await this.prisma.service.findUnique({
+      where: { id: serviceBooking.serviceId },
+    });
+    // Ensure service is found for notification, though not strictly required for cancel logic
+    const serviceName = service ? service.name : 'Unknown Service';
+
+
+    // TODO: Implement refund logic if necessary
+
     return this.prisma.serviceBooking.update({
       where: { id },
       data: { status: 'cancelled' },
     });
   }
 }
-

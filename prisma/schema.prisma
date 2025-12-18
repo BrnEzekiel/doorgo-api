@@ -12,163 +12,201 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-
 model User {
-  id        String   @id @default(uuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  email     String   @unique
-  password  String?
-  firstName String? // Added firstName
-  lastName  String? // Added lastName
-  phone     String?   @unique
-  otp       String?
+  id         String    @id @default(uuid())
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  email      String    @unique
+  password   String?
+  firstName  String? // Added firstName
+  lastName   String? // Added lastName
+  phone      String?   @unique
+  otp        String?
   otpExpires DateTime?
   // For student users
-  isStudent Boolean  @default(false)
-  university String? // Optional, for students
-  isApproved Boolean @default(false)
-  balance    Decimal  @default(0.00) @db.Decimal(10, 2) // For service providers to track earnings
+  isApproved Boolean   @default(false)
+  balance    Decimal   @default(0.00) @db.Decimal(10, 2) // For service providers to track earnings
 
-  // Role for the user (student, landlord, service_provider, admin, caretaker)
+  // Role for the user (tenant, landlord, service_provider, admin, caretaker)
   // This will be used for authentication and authorization
-  role      String[] @default(["student"])
+  role String[] @default(["tenant"])
 
   // Relationships
-  // If a user is a student, they can have bookings
-    bookings        Booking[] @relation("StudentBookings")
-    leadBookings    Booking[] @relation("LeadTenant")
-    // If a user is a landlord, they can own hostels
-  hostels         Hostel[] @relation("HostelOwner")
+  // If a user is a tenant, they can have bookings
+  bookings                     Booking[]                  @relation("StudentBookings")
+  leadBookings                 Booking[]                  @relation("LeadTenant")
+  // If a user is a landlord, they can own hostels
+  hostels                      Hostel[]                   @relation("HostelOwner")
   // If a user is a caretaker, they can manage a hostel
-  caretakerFor    Hostel?  @relation("HostelCaretaker")
+  caretakerFor                 Hostel?                    @relation("HostelCaretaker")
   // If a user is a service provider, they can have services
-  services        Service[]
-  serviceBookings ServiceBooking[] @relation("ServiceBookingStudent")
-  notifications   Notification[]
-  rentStatus      RentStatus[]
-  utilityBills    UtilityBill[]
-  leases          Lease[]
-  maintenanceRequests MaintenanceRequest[]
-  withdrawalRequests  WithdrawalRequest[] // Inverse relation for WithdrawalRequest
+  services                     Service[]
+  serviceBookings              ServiceBooking[]           @relation("ServiceBookingTenant")
+  notifications                Notification[]
+  rentStatus                   RentStatus[]
+  utilityBills                 UtilityBill[]
+  leases                       Lease[]
+  maintenanceRequests          MaintenanceRequest[]
+  withdrawalRequests           WithdrawalRequest[] // Inverse relation for WithdrawalRequest
+  commissionRecords            CommissionRecord[]
+  subscriptionStatus           SubscriptionStatus         @default(EXPIRED) // Default to expired for new users
+  subscriptionStartDate        DateTime?
+  subscriptionEndDate          DateTime?
+  subscriptionTier             String? // e.g., "Basic", "Premium"
+  subscriptions                Subscription[] // Relation to Subscription model
+  visibilityBoosts             VisibilityBoost[] // Inverse relation for visibility boosts
+  smsBundles                   SmsBundle[] // Inverse relation for SMS bundles
+  twoFactorSecret              String?
+  isTwoFactorEnabled           Boolean                    @default(false)
+  hashedRefreshToken           String?
+  refreshTokenExpiresAt        DateTime?
+  suspiciousActivities         SuspiciousActivityLog[]
+  resolvedSuspiciousActivities SuspiciousActivityLog[]    @relation("ResolvedSuspiciousActivity")
+  assignedMaintenanceRequests  MaintenanceRequest[]       @relation("AssignedMaintenanceProvider") // New: For service providers
+  maintenanceStatusChanges     MaintenanceStatusHistory[] @relation("MaintenanceStatusChangedBy") // New: For tracking status changes made by user
+  reviewsGiven                 ServiceReview[]            @relation("Reviewer")
+  reviewsReceived              ServiceReview[]            @relation("ReviewedProvider")
+
+  // Fields for Service Provider profiles
+  profilePictureUrl  String?
+  bio                String?
+  portfolioImageUrls String[] @default([])
 }
 
 model Hostel {
-  id           String   @id @default(uuid())
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  name         String
-  university   String   // Link to university (dropdown: UoN, JKUAT, KU, etc.)
-  propertyType String   @default("hostel") // 'hostel', 'apartment', 'shared_house'
-  images       String[] @default([]) // New field for multiple image URLs
-  description  String? // New field for hostel description
-  amenities    String[] @default([]) // New field for hostel-level amenities
-  utilityTypes String[] @default([]) // New field for available utility types (e.g., Water, Electricity, WiFi)
-  paymentMethods String[] @default([]) // New field for accepted payment methods
+  id                      String               @id @default(uuid())
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+  name                    String
+  university              String // Link to university (dropdown: UoN, JKUAT, KU, etc.)
+  propertyType            String               @default("hostel") // 'hostel', 'apartment', 'shared_house'
+  images                  String[]             @default([]) // New field for multiple image URLs
+  description             String? // New field for hostel description
+  amenities               String[]             @default([]) // New field for hostel-level amenities
+  utilityTypes            String[]             @default([]) // New field for available utility types (e.g., Water, Electricity, WiFi)
+  paymentMethods          String[]             @default([]) // New field for accepted payment methods
   extraChargesDescription String? // New field for how extra charges are handled
-  ownerId      String
-  owner        User     @relation("HostelOwner", fields: [ownerId], references: [id])
-  caretakerId  String?  @unique // Added for caretaker relationship
-  caretaker    User?    @relation("HostelCaretaker", fields: [caretakerId], references: [id])
-  rooms        Room[]
-  isApproved Boolean @default(false)
-  rentStatus   RentStatus[]
-  utilityBills UtilityBill[]
-  leases       Lease[]
-  maintenanceRequests MaintenanceRequest[]
-  announcements Announcement[]
+  ownerId                 String
+  owner                   User                 @relation("HostelOwner", fields: [ownerId], references: [id])
+  caretakerId             String?              @unique // Added for caretaker relationship
+  caretaker               User?                @relation("HostelCaretaker", fields: [caretakerId], references: [id])
+  rooms                   Room[]
+  isApproved              Boolean              @default(false)
+  rentStatus              RentStatus[]
+  utilityBills            UtilityBill[]
+  leases                  Lease[]
+  maintenanceRequests     MaintenanceRequest[]
+  announcements           Announcement[]
 }
 
 model Room {
-  id            String   @id @default(uuid())
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  roomNumber    String
-  monthlyRent   Float
-  semesterRent  Float? // Optional, if semester-based
-  maxOccupants  Int
-  currentOccupants Int @default(0) // For occupancy tracking
-  amenities     String[] // e.g., ["WiFi", "water", "security"]
-  hostelId      String
-  hostel        Hostel   @relation(fields: [hostelId], references: [id])
-  bookings      Booking[]
+  id               String    @id @default(uuid())
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  roomNumber       String
+  monthlyRent      Float
+  semesterRent     Float? // Optional, if semester-based
+  depositAmount    Float? // New: Optional security deposit amount
+  maxOccupants     Int
+  currentOccupants Int       @default(0) // For occupancy tracking
+  amenities        String[] // e.g., ["WiFi", "water", "security"]
+  roomType         String // e.g., "Single Room", "1 Bedroom", "Bedsitter"
+  hostelId         String
+  hostel           Hostel    @relation(fields: [hostelId], references: [id])
+  bookings         Booking[]
 }
 
 model Service {
-  id           String   @id @default(uuid())
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  name         String
-  description  String?
-  images       String[] // Added for service images
-  price        Float
-  providerId   String
-  provider     User     @relation(fields: [providerId], references: [id])
-  categoryId   String
-  category     ServiceCategory @relation(fields: [categoryId], references: [id])
-  bookings     ServiceBooking[]
-  isApproved   Boolean  @default(true)
+  id               String            @id @default(uuid())
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  name             String
+  description      String?
+  images           String[] // Added for service images
+  price            Float
+  providerId       String
+  provider         User              @relation(fields: [providerId], references: [id])
+  categoryId       String
+  category         ServiceCategory   @relation(fields: [categoryId], references: [id])
+  isApproved       Boolean           @default(true) // Moved inside the model
+  visibilityBoosts VisibilityBoost[] // Added inverse relation
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+  CANCELLED
+  COMPLETED
 }
 
 model Booking {
-  id        String   @id @default(uuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  tenants      User[]   @relation("StudentBookings")
+  id           String        @id @default(uuid())
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  tenants      User[]        @relation("StudentBookings")
   leadTenantId String
-  leadTenant   User     @relation("LeadTenant", fields: [leadTenantId], references: [id])
+  leadTenant   User          @relation("LeadTenant", fields: [leadTenantId], references: [id])
   roomId       String
-  room         Room     @relation(fields: [roomId], references: [id])
+  room         Room          @relation(fields: [roomId], references: [id])
   startDate    DateTime
   endDate      DateTime
-  status       String   @default("pending") // pending, confirmed, cancelled, completed
+  status       BookingStatus @default(PENDING)
   // semester-aware fields
-  billingCycle String @default("monthly") // 'monthly' | 'semester'
+  billingCycle String        @default("monthly") // 'monthly' | 'semester'
   invoices     Invoice[]
   checklist    Checklist?
 }
 
 model ServiceBooking {
-  id                 String   @id @default(uuid())
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-  serviceId          String
-  service            Service  @relation(fields: [serviceId], references: [id])
-  studentId          String
-  student            User     @relation("ServiceBookingStudent", fields: [studentId], references: [id])
+    id                 String   @id @default(uuid())
+    createdAt          DateTime @default(now())
+    updatedAt          DateTime @updatedAt
+    serviceId          String
+    // Removed direct relation to Service, will rely on serviceId
+    tenantId           String
+    tenant             User     @relation("ServiceBookingTenant", fields: [tenantId], references: [id])
   bookingTime        DateTime
-  status             String   @default("pending") // pending, confirmed, cancelled, completed
+  status             String            @default("pending") // pending, confirmed, cancelled, completed
   amountPaid         Float
-  paymentId          String?  @unique // To link with a payment
-  payment            Payment? @relation("ServiceBookingPayment", fields: [paymentId], references: [id])
-  confirmationStatus String   @default("pending") // pending, confirmed_by_student, confirmed_by_provider
-  releaseStatus      String   @default("pending") // pending, released
+  paymentId          String?           @unique // To link with a payment
+  payment            Payment?          @relation("ServiceBookingPayment", fields: [paymentId], references: [id])
+  confirmationStatus String            @default("pending") // pending, confirmed_by_student, confirmed_by_provider
+  releaseStatus      String            @default("pending") // pending, released
+  commissionRecord   CommissionRecord?
 }
 
 model Invoice {
-  id        String   @id @default(uuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id        String    @id @default(uuid())
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
   bookingId String
-  booking   Booking  @relation(fields: [bookingId], references: [id])
+  booking   Booking   @relation(fields: [bookingId], references: [id])
   amount    Float
   dueDate   DateTime
-  status    String   @default("pending") // pending, paid, overdue
+  status    String    @default("pending") // pending, paid, overdue
   payments  Payment[]
 }
 
 model Payment {
-  id               String   @id @default(uuid())
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id               String           @id @default(uuid())
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
   invoiceId        String?
-  invoice          Invoice? @relation(fields: [invoiceId], references: [id])
-  serviceBookingId String?  @unique
-  serviceBooking   ServiceBooking? @relation("ServiceBookingPayment")
+  invoice          Invoice?         @relation(fields: [invoiceId], references: [id])
+  serviceBookingId String?          @unique
+  serviceBooking   ServiceBooking?  @relation("ServiceBookingPayment")
+  subscriptionId   String? // New field for subscription payment
+  subscription     Subscription?    @relation(fields: [subscriptionId], references: [id])
+  boostId          String?          @unique // New field for boost payment
+  boost            VisibilityBoost? @relation("BoostPayment")
+  smsBundleId      String?          @unique // New field for SMS bundle payment
+  smsBundle        SmsBundle?       @relation("SmsBundlePayment")
   amount           Float
   phone            String
-  status           String   @default("pending") // pending, completed, failed
   transactionId    String?
+  description      String? // New: Add description for miscellaneous payments like C2B
+  status           String           @default("pending") // e.g., "pending", "completed", "failed"
 }
 
 model Checklist {
@@ -190,41 +228,42 @@ model ServiceCategory {
 }
 
 model Notification {
-  id        String   @id @default(uuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id        String    @id @default(uuid())
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
   message   String
-  type      String   // e.g., 'SMS', 'EMAIL', 'PUSH'
+  type      String // e.g., 'SMS', 'EMAIL', 'PUSH'
   sentAt    DateTime?
   readAt    DateTime?
 }
 
 model RentStatus {
-  id              String   @id @default(uuid())
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id              String        @id @default(uuid())
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
   userId          String
-  user            User     @relation(fields: [userId], references: [id])
+  user            User          @relation(fields: [userId], references: [id])
   hostelId        String
-  hostel          Hostel   @relation(fields: [hostelId], references: [id])
+  hostel          Hostel        @relation(fields: [hostelId], references: [id])
   rentAmount      Float
   nextDueDate     DateTime
-  paymentStatus   String   @default("Due") // e.g., "Due", "Paid", "Overdue"
+  paymentStatus   String        @default("Due") // e.g., "Due", "Paid", "Overdue"
   lastPaymentDate DateTime?
   payments        RentPayment[]
 }
 
 model RentPayment {
-  id           String   @id @default(uuid())
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id           String     @id @default(uuid())
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
   rentStatusId String
   rentStatus   RentStatus @relation(fields: [rentStatusId], references: [id])
   amountPaid   Float
   paymentDate  DateTime
   reference    String?
+  receiptUrl   String? // New: URL to the generated receipt
 }
 
 model UtilityBill {
@@ -235,7 +274,7 @@ model UtilityBill {
   user      User     @relation(fields: [userId], references: [id])
   hostelId  String
   hostel    Hostel   @relation(fields: [hostelId], references: [id])
-  type      String   // e.g., "Water", "Electricity", "Garbage"
+  type      String // e.g., "Water", "Electricity", "Garbage"
   amount    Float
   dueDate   DateTime
   status    String   @default("Due") // e.g., "Due", "Paid"
@@ -256,17 +295,46 @@ model Lease {
 }
 
 model MaintenanceRequest {
-  id          String   @id @default(uuid())
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  userId      String
-  user        User     @relation(fields: [userId], references: [id])
-  hostelId    String
-  hostel      Hostel   @relation(fields: [hostelId], references: [id])
-  type        String   // e.g., "Plumbing", "Electrical", "Structural"
-  description String
-  status      String   @default("Pending") // e.g., "Pending", "In Progress", "Resolved"
-  attachments String[]
+  id                 String                     @id @default(uuid())
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+  userId             String
+  user               User                       @relation(fields: [userId], references: [id])
+  hostelId           String
+  hostel             Hostel                     @relation(fields: [hostelId], references: [id])
+  type               String // e.g., "Plumbing", "Electrical", "Structural"
+  description        String
+  status             String                     @default("Pending") // e.g., "Pending", "In Progress", "Resolved"
+  attachments        String[]
+  assignedProviderId String?
+  assignedProvider   User?                      @relation("AssignedMaintenanceProvider", fields: [assignedProviderId], references: [id])
+  statusHistory      MaintenanceStatusHistory[] // New: Relation to MaintenanceStatusHistory
+  review             ServiceReview? // New: Relation to ServiceReview
+}
+
+model MaintenanceStatusHistory {
+  id                   String             @id @default(uuid())
+  createdAt            DateTime           @default(now())
+  maintenanceRequestId String
+  maintenanceRequest   MaintenanceRequest @relation(fields: [maintenanceRequestId], references: [id])
+  changedByUserId      String? // User who made the change (e.g., landlord, caretaker, admin)
+  changedByUser        User?              @relation("MaintenanceStatusChangedBy", fields: [changedByUserId], references: [id])
+  oldStatus            String // e.g., "Pending"
+  newStatus            String // e.g., "In Progress"
+}
+
+model ServiceReview {
+  id                   String             @id @default(uuid())
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  rating               Int
+  comment              String?
+  maintenanceRequestId String             @unique // One review per request
+  maintenanceRequest   MaintenanceRequest @relation(fields: [maintenanceRequestId], references: [id])
+  reviewerId           String
+  reviewer             User               @relation("Reviewer", fields: [reviewerId], references: [id])
+  providerId           String
+  provider             User               @relation("ReviewedProvider", fields: [providerId], references: [id])
 }
 
 model Announcement {
@@ -280,14 +348,127 @@ model Announcement {
 }
 
 model WithdrawalRequest {
-  id        String   @id @default(uuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  amount    Decimal  @db.Decimal(10, 2)
-  commission Decimal @db.Decimal(10, 2)
-  netAmount Decimal  @db.Decimal(10, 2)
+  id            String   @id @default(uuid())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  amount        Decimal  @db.Decimal(10, 2)
+  commission    Decimal  @db.Decimal(10, 2)
+  netAmount     Decimal  @db.Decimal(10, 2)
   paymentMethod String // e.g., M-Pesa
-  status    String   @default("pending") // pending, approved, rejected, completed
+  status        String   @default("pending") // pending, approved, rejected, completed
+}
+
+model CommissionRecord {
+  id               String         @id @default(uuid())
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  serviceBookingId String         @unique
+  serviceBooking   ServiceBooking @relation(fields: [serviceBookingId], references: [id])
+  providerId       String
+  provider         User           @relation(fields: [providerId], references: [id])
+  amountPaid       Decimal        @db.Decimal(10, 2) // Original amount paid by tenant
+  commissionRate   Decimal        @db.Decimal(10, 2) // e.g., 0.10 for 10%
+  commissionAmount Decimal        @db.Decimal(10, 2) // Calculated commission
+  netAmount        Decimal        @db.Decimal(10, 2) // Amount credited to provider
+  status           String         @default("recorded") // e.g., 'recorded', 'adjusted'
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  TRIAL
+  CANCELLED
+}
+
+model Subscription {
+  id            String             @id @default(uuid())
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  userId        String
+  user          User               @relation(fields: [userId], references: [id])
+  tier          String // e.g., "Monthly KES 1000 Landlord"
+  price         Decimal            @db.Decimal(10, 2)
+  status        SubscriptionStatus
+  startDate     DateTime
+  endDate       DateTime
+  paymentMethod String? // e.g., "M-Pesa", "Card"
+  transactionId String? // External transaction ID
+  payments      Payment[] // Inverse relation for payments made towards this subscription
+}
+
+enum BoostStatus {
+  ACTIVE
+  EXPIRED
+  PENDING_PAYMENT
+  CANCELLED
+}
+
+model VisibilityBoost {
+  id               String      @id @default(uuid())
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  serviceId        String
+  service          Service     @relation(fields: [serviceId], references: [id]) // Added explicit relation
+  providerId       String
+  provider         User        @relation(fields: [providerId], references: [id])
+  durationDays     Int         // e.g., 7 for a week, 30 for a month
+  price            Decimal     @db.Decimal(10, 2)
+  status           BoostStatus
+  startDate        DateTime
+  endDate          DateTime
+  paymentId        String?     @unique // Link to payment
+  payment          Payment?    @relation("BoostPayment", fields: [paymentId], references: [id])
+  transactionId    String?
+}
+
+enum SmsBundleStatus {
+  ACTIVE
+  EXPIRED
+  PENDING_PAYMENT
+  CANCELLED
+}
+
+model SmsBundle {
+  id            String          @id @default(uuid())
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  userId        String
+  user          User            @relation(fields: [userId], references: [id])
+  bundleName    String // e.g., "Small SMS Pack", "Medium SMS Pack"
+  smsCount      Int // Number of SMS in the bundle
+  price         Decimal         @db.Decimal(10, 2)
+  status        SmsBundleStatus
+  purchaseDate  DateTime
+  expiryDate    DateTime?
+  paymentId     String?         @unique // Link to payment
+  payment       Payment?        @relation("SmsBundlePayment", fields: [paymentId], references: [id])
+  transactionId String?
+}
+
+enum ActivityType {
+  FAILED_LOGIN
+  UNAUTHORIZED_ACCESS
+  RATE_LIMIT_BLOCK
+  ACCOUNT_TAKEOVER
+  PASSWORD_RESET_ATTEMPT
+  USER_CREATED
+  USER_PROFILE_UPDATED
+  // Add more types as needed
+}
+
+model SuspiciousActivityLog {
+  id               String       @id @default(uuid())
+  createdAt        DateTime     @default(now())
+  ipAddress        String?
+  userId           String? // User involved in the activity (if authenticated or identified)
+  user             User?        @relation(fields: [userId], references: [id])
+  activityType     ActivityType
+  description      String
+  details          Json? // Store additional details (e.g., failed credentials, requested path)
+  isResolved       Boolean      @default(false)
+  resolvedByUserId String?
+  resolvedByUser   User?        @relation("ResolvedSuspiciousActivity", fields: [resolvedByUserId], references: [id])
+  resolvedAt       DateTime? // New: Timestamp when the log was resolved
 }

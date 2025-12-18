@@ -16,7 +16,21 @@ export class ChecklistService {
   }
 
   findOne(id: string) {
-    return this.prisma.checklist.findUnique({ where: { id } });
+    return this.prisma.checklist.findUnique({
+      where: { id },
+      include: {
+        booking: {
+          include: {
+            leadTenant: true,
+            room: {
+              include: {
+                hostel: true,
+              },
+            },
+          },
+        },
+      },
+    });
   }
 
   update(id: string, updateChecklistDto: UpdateChecklistDto) {

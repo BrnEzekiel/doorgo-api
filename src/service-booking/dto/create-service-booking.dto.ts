@@ -1,6 +1,6 @@
 export class CreateServiceBookingDto {
   serviceId: string;
-  studentId: string;
+  tenantId: string;
   bookingTime: Date;
   amountPaid: number;
 }

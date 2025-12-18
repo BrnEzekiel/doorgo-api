@@ -20,15 +20,11 @@ export class RegisterDto {
 
   @IsString()
   @IsNotEmpty()
-  role: string; // e.g., 'student', 'landlord', 'service_provider'
+  role: string; // e.g., 'tenant', 'landlord', 'service_provider'
 
   @IsString()
-  @IsOptional()
-  university?: string; // For student role
-
-  @IsString()
-  @IsOptional()
-  phone?: string; // For landlords/service providers or if phone is still relevant
+  @IsNotEmpty()
+  phone: string; // Made required for registration flow
 
   // Add other role-specific fields as needed
 }

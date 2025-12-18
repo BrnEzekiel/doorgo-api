@@ -21,11 +21,21 @@ export class CreateUserDto {
   @IsString({ each: true })
   role?: string[];
 
+  // Optional fields for user profile details (can be set during update)
   @IsOptional()
-  @IsBoolean()
-  isStudent?: boolean;
+  @IsString()
+  password?: string; // Not set during initial user creation, but can be part of data for updates
 
   @IsOptional()
   @IsString()
-  university?: string;
+  profilePictureUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  bio?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  portfolioImageUrls?: string[];
 }

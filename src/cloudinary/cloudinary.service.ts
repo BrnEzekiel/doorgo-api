@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { v2 as cloudinary, UploadApiResponse } from 'cloudinary'; // Import UploadApiResponse
-const streamifier = require('streamifier');
+import streamifier from 'streamifier';
 
 @Injectable()
 export class CloudinaryService {
@@ -24,6 +24,22 @@ export class CloudinaryService {
         },
       );
       streamifier.createReadStream(file.buffer).pipe(uploadStream);
+    });
+  }
+
+  async uploadFileFromBuffer(buffer: Buffer, publicId: string, resourceType: 'image' | 'raw' | 'video' = 'raw'): Promise<UploadApiResponse> {
+    return new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        { resource_type: resourceType, public_id: publicId },
+        (error, result) => {
+          if (result) {
+            resolve(result);
+          } else {
+            reject(error);
+          }
+        },
+      );
+      streamifier.createReadStream(buffer).pipe(uploadStream);
     });
   }
 }

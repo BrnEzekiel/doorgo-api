@@ -1,13 +1,14 @@
 import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { UserService } from '../user/user.service';
+import { BookingStatus } from '@prisma/client';
+import { AssignCaretakerDto } from './dto/assign-caretaker.dto';
 import { CreateHostelDto } from './dto/create-hostel.dto';
 import { UpdateHostelDto } from './dto/update-hostel.dto';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { UpdateRoomDto } from './dto/update-room.dto';
-import { UserService } from '../user/user.service'; // Import UserService
-import { AssignCaretakerDto } from './dto/assign-caretaker.dto';
-import { UserRole } from '../common/enums/user-role.enum';
 import { CreateAnnouncementDto } from './dto/create-announcement.dto';
+// import { UserRole } from '../user/enums/user-role.enum'; // Removed as it doesn't exist
 
 @Injectable()
 export class HostelService {
@@ -45,15 +46,15 @@ export class HostelService {
     });
 
     // 4. Update user role to include 'caretaker'
-    const newRoles = [...new Set([...caretaker.role, UserRole.CARETAKER])]; // Avoid duplicate roles
+    const newRoles = [...new Set([...caretaker.role, 'caretaker'])]; // Avoid duplicate roles
     await this.userService.update(caretakerId, { role: newRoles });
 
     return updatedHostel;
   }
 
   // Hostel CRUD
-  createHostel(createHostelDto: CreateHostelDto) {
-    return this.prisma.hostel.create({ data: createHostelDto });
+  createHostel(createHostelDto: CreateHostelDto, ownerId: string) {
+    return this.prisma.hostel.create({ data: { ...createHostelDto, ownerId } });
   }
 
   findAllHostels() {
@@ -77,6 +78,32 @@ export class HostelService {
 
   removeHostel(id: string) {
     return this.prisma.hostel.delete({ where: { id } });
+  }
+
+  async getOccupancyDetails(hostelId: string) {
+    const rooms = await this.prisma.room.findMany({
+      where: { hostelId },
+    });
+
+    if (!rooms || rooms.length === 0) {
+      return { totalCapacity: 0, currentOccupants: 0, occupancyRate: 0, details: [] };
+    }
+
+    const totalCapacity = rooms.reduce((acc, room) => acc + room.maxOccupants, 0);
+    const totalOccupants = rooms.reduce((acc, room) => acc + room.currentOccupants, 0); // Assuming currentOccupants is updated elsewhere
+    const occupancyRate = totalCapacity > 0 ? (totalOccupants / totalCapacity) * 100 : 0;
+
+    return {
+      totalCapacity,
+      currentOccupants: totalOccupants,
+      occupancyRate: parseFloat(occupancyRate.toFixed(2)),
+      details: rooms.map(room => ({
+        roomId: room.id,
+        roomNumber: room.roomNumber,
+        occupants: room.currentOccupants,
+        capacity: room.maxOccupants,
+      })),
+    };
   }
 
   // Announcement CRUD
@@ -114,17 +141,21 @@ export class HostelService {
   }
 
   async findHostelControlDetails(hostelId: string, userId: string) {
-    const hostel = await this.prisma.hostel.findUnique({
+    const hostelData = await this.prisma.hostel.findUnique({
       where: { id: hostelId },
       include: {
         owner: true, // Include owner to verify ownership if not already done by guard
         rooms: {
           include: {
             bookings: {
-              where: { status: { not: 'CANCELED' } }, // Only active bookings
+              where: { status: { not: BookingStatus.CANCELLED } }, // Only active bookings
               include: {
                 leadTenant: true, // Include tenant details
-                payments: true,   // Include payment details if available
+                invoices: {       // Correctly nest payments under invoices
+                  include: {
+                    payments: true,
+                  },
+                },
               },
             },
           },
@@ -132,45 +163,54 @@ export class HostelService {
       },
     });
 
-    if (!hostel) {
+    if (!hostelData) {
       throw new NotFoundException(`Hostel with ID ${hostelId} not found.`);
     }
 
     // Verify ownership
-    if (hostel.ownerId !== userId) {
+    if (hostelData.ownerId !== userId) {
       throw new UnauthorizedException('You are not authorized to view this hostel\'s control panel.');
     }
 
+    const { rooms, ...hostel } = hostelData;
+
     // Transform data to include derived properties like room occupancy and payment status
-    const roomsWithDetails = hostel.rooms.map(room => {
+    const roomsWithDetails = rooms.map(room => {
       const currentOccupants = room.bookings ? room.bookings.length : 0;
       const isOccupied = currentOccupants > 0;
-      const engagedOccupants = room.bookings?.filter(booking => booking.status === 'ACTIVE' || booking.status === 'PENDING').length || 0;
-      const paidOccupants = room.bookings?.filter(booking => booking.payments?.some(payment => payment.status === 'PAID')).length || 0; // Assuming payment status
-
-      return {
-        ...room,
-        currentOccupants,
-        isOccupied,
-        engagedOccupants, // Number of tenants with active/pending bookings
-        paidOccupants, // Number of tenants who have made at least one payment
-        tenants: room.bookings?.map(booking => ({
+      
+      const tenants = room.bookings?.map((booking: { leadTenant: { id: string; firstName: string | null; lastName: string | null; email: string; }; invoices: any[]; status: string; }) => {
+        const hasPaid = booking.invoices.some(invoice => invoice.payments.some(p => p.status === 'completed'));
+        return {
           id: booking.leadTenant.id,
           firstName: booking.leadTenant.firstName,
           lastName: booking.leadTenant.lastName,
           email: booking.leadTenant.email,
           bookingStatus: booking.status,
-          payments: booking.payments,
-          // Add other relevant tenant/booking details
-        })),
+          hasPaid,
+        };
+      });
+
+      return {
+        ...room,
+        bookings: undefined, // Remove original bookings to avoid redundancy
+        currentOccupants,
+        isOccupied,
+        tenants,
       };
     });
 
     return {
-      hostel: { ...hostel, rooms: undefined }, // Return hostel without nested rooms for cleaner structure
+      hostel,
       rooms: roomsWithDetails,
-      // Add other aggregated data here if needed for the control panel overview
     };
+  }
+
+  async findHostelsByOwner(ownerId: string) {
+    return this.prisma.hostel.findMany({
+      where: { ownerId },
+      select: { id: true, name: true },
+    });
   }
 }
 
