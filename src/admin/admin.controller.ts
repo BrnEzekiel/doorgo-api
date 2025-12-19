@@ -4,6 +4,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'; // Import JwtAuthG
 import { RolesGuard } from '../common/guards/roles.guard'; // Import RolesGuard
 import { Roles } from '../common/decorators/roles.decorator'; // Import Roles decorator
 import { CreateUserDto } from '../user/dto/create-user.dto'; // Import CreateUserDto
+import { UpdateUserDto } from '../user/dto/update-user.dto'; // Import UpdateUserDto
 
 @UseGuards(JwtAuthGuard, RolesGuard) // Apply guards at controller level
 @Roles('admin') // Require 'admin' role for all endpoints in this controller
@@ -24,6 +25,11 @@ export class AdminController {
   @Post('users')
   createUser(@Body() createUserDto: CreateUserDto) {
     return this.adminService.createUser(createUserDto);
+  }
+
+  @Patch('users/:id')
+  updateUser(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
+    return this.adminService.updateUser(id, updateUserDto);
   }
 
   // Moderation Endpoints

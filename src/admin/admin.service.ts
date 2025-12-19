@@ -5,6 +5,8 @@ import { ServiceCategoryService } from '../service-category/service-category.ser
 import { BookingService } from '../booking/booking.service';
 import { UserService } from '../user/user.service';
 import { ServiceService } from '../service/service.service';
+import { CreateUserDto } from '../user/dto/create-user.dto';
+import { UpdateUserDto } from '../user/dto/update-user.dto';
 
 
 @Injectable()
@@ -48,6 +50,16 @@ export class AdminService {
         serviceCount: cat._count.services,
       })),
     };
+  }
+
+  // User Management
+  async createUser(createUserDto: CreateUserDto) {
+    // Dummy comment to force recompile
+    return this.userService.create(createUserDto);
+  }
+
+  async updateUser(id: string, updateUserDto: UpdateUserDto) {
+    return this.userService.update(id, updateUserDto);
   }
 
   // Moderation
