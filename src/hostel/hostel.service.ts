@@ -54,7 +54,18 @@ export class HostelService {
 
   // Hostel CRUD
   createHostel(createHostelDto: CreateHostelDto, ownerId: string) {
-    return this.prisma.hostel.create({ data: { ...createHostelDto, ownerId } });
+    // Destructure properties that are not part of the direct Hostel model creation
+    const { images, amenities, utilityTypes, paymentMethods, extraChargesDescription, ...hostelCreationData } = createHostelDto;
+
+    return this.prisma.hostel.create({
+      data: {
+        ...hostelCreationData,
+        owner: {
+          connect: { id: ownerId },
+        },
+        // Images, amenities, utilityTypes, paymentMethods, extraChargesDescription are handled elsewhere (e.g., room level)
+      },
+    });
   }
 
   findAllHostels() {

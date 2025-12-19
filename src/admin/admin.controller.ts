@@ -1,8 +1,9 @@
-import { Controller, Get, Param, Patch, Delete, UseGuards } from '@nestjs/common'; // Added UseGuards
+import { Controller, Get, Param, Patch, Delete, UseGuards, Post, Body } from '@nestjs/common'; // Added Post, Body
 import { AdminService } from './admin.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'; // Import JwtAuthGuard
 import { RolesGuard } from '../common/guards/roles.guard'; // Import RolesGuard
 import { Roles } from '../common/decorators/roles.decorator'; // Import Roles decorator
+import { CreateUserDto } from '../user/dto/create-user.dto'; // Import CreateUserDto
 
 @UseGuards(JwtAuthGuard, RolesGuard) // Apply guards at controller level
 @Roles('admin') // Require 'admin' role for all endpoints in this controller
@@ -18,6 +19,11 @@ export class AdminController {
   @Get('users')
   getAllUsers() {
     return this.adminService.getAllUsers();
+  }
+
+  @Post('users')
+  createUser(@Body() createUserDto: CreateUserDto) {
+    return this.adminService.createUser(createUserDto);
   }
 
   // Moderation Endpoints

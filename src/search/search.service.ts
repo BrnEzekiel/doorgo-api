@@ -29,7 +29,8 @@ export class SearchService {
         where: {
           OR: [
             { name: { contains, mode: 'insensitive' } },
-            { nearbyLandmark: { contains, mode: 'insensitive' } },
+            { description: { contains, mode: 'insensitive' } }, // Search nearbyLandmark within description for now
+            // Assuming nearbyLandmark is conceptually similar to a location description
           ],
         },
       });
