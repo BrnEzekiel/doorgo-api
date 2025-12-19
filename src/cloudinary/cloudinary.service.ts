@@ -13,6 +13,15 @@ export class CloudinaryService {
   }
 
   uploadFile(file: Express.Multer.File): Promise<UploadApiResponse> { // Use UploadApiResponse here
+    console.log('CloudinaryService.uploadFile - file received:', {
+      fieldname: file.fieldname,
+      originalname: file.originalname,
+      encoding: file.encoding,
+      mimetype: file.mimetype,
+      size: file.size,
+      bufferLength: file.buffer ? file.buffer.length : 0,
+      // Do not log the entire buffer as it can be very large
+    });
     return new Promise<UploadApiResponse>((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
         (error, result) => {
