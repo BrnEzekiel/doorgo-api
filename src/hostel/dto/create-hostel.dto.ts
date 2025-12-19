@@ -1,8 +1,7 @@
 export class CreateHostelDto {
   name: string;
-  university: string;
+  nearbyLandmark: string;
   propertyType: string;
-  ownerId: string;
   images?: string[];
   description?: string;
   amenities?: string[];

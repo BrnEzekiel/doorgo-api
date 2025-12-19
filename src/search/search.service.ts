@@ -29,7 +29,7 @@ export class SearchService {
         where: {
           OR: [
             { name: { contains, mode: 'insensitive' } },
-            { university: { contains, mode: 'insensitive' } },
+            { nearbyLandmark: { contains, mode: 'insensitive' } },
           ],
         },
       });

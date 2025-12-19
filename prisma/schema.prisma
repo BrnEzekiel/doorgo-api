@@ -78,7 +78,7 @@ model Hostel {
   createdAt               DateTime             @default(now())
   updatedAt               DateTime             @updatedAt
   name                    String
-  university              String // Link to university (dropdown: UoN, JKUAT, KU, etc.)
+  nearbyLandmark          String // Link to nearby landmark (e.g., University, Shopping Mall, etc.)
   propertyType            String               @default("hostel") // 'hostel', 'apartment', 'shared_house'
   images                  String[]             @default([]) // New field for multiple image URLs
   description             String? // New field for hostel description

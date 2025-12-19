@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, UseInterceptors, UploadedFiles, UseGuards, UnauthorizedException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { ServiceService } from './service.service';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
@@ -20,7 +21,7 @@ export class ServiceController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('service_provider')
   @Post()
-  @UseInterceptors(FilesInterceptor('images'))
+  @UseInterceptors(FilesInterceptor('images', 10, { storage: memoryStorage() }))
   async create(
     @UploadedFiles() files: Array<Express.Multer.File>,
     @Body() createServiceDto: CreateServiceDto,
@@ -38,7 +39,7 @@ export class ServiceController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('service_provider', 'admin', 'landlord', 'tenant', 'caretaker') // Allow all roles that might need to upload images
   @Post('upload-images')
-  @UseInterceptors(FilesInterceptor('images'))
+  @UseInterceptors(FilesInterceptor('images', 10, { storage: memoryStorage() }))
   async uploadImages(@UploadedFiles() files: Array<Express.Multer.File>) {
     if (!files || files.length === 0) {
       throw new BadRequestException('No images provided.');

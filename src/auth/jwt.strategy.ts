@@ -26,10 +26,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       }
       console.log(`JwtStrategy: User ${user.email} (ID: ${user.id}) found.`);
       console.log('--- JwtStrategy: validate End ---');
-      // In NestJS, whatever is returned from validate is attached to req.user
-      // We need to ensure the role is also available in req.user for RolesGuard.
-      // The payload already contains the role. We can attach the user's role from the DB or payload.
-      return { userId: user.id, email: user.email, role: user.role }; // Return a simplified user object, including role
+      return user; // Return the full user object
     } catch (error) {
       console.error('JwtStrategy: Error during validation:', error);
       throw new UnauthorizedException(); // Re-throw or throw a more specific error

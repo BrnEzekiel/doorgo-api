@@ -29,7 +29,7 @@ export class UserController {
   @Get(':id')
   async findOne(@Param('id') id: string, @AuthUser() authUser: any) {
     // A user can view their own profile, or an admin can view any profile
-    if (id === authUser.userId || authUser.role.includes('admin')) {
+    if (id === authUser.id || authUser.role.includes('admin')) {
       return this.userService.findOne(id);
     }
     throw new UnauthorizedException('You are not authorized to view this profile.');
@@ -40,7 +40,7 @@ export class UserController {
   @Patch(':id')
   async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto, @AuthUser() authUser: any) {
     // A user can update their own profile, or an admin can update any profile
-    if (id === authUser.userId || authUser.role.includes('admin')) {
+    if (id === authUser.id || authUser.role.includes('admin')) {
       return this.userService.update(id, updateUserDto);
     }
     throw new UnauthorizedException('You are not authorized to update this profile.');
@@ -60,7 +60,7 @@ export class UserController {
     @AuthUser() authUser: any, // Using any for now, but should be a typed user object
     @Body() requestWithdrawalDto: RequestWithdrawalDto,
   ) {
-    if (id !== authUser.userId) { // Ensure user is requesting withdrawal for themselves
+    if (id !== authUser.id) { // Ensure user is requesting withdrawal for themselves
       throw new UnauthorizedException('You can only request withdrawal for your own account.');
     }
     return this.userService.requestWithdrawal(id, requestWithdrawalDto);

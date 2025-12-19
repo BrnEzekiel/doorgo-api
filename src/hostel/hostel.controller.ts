@@ -28,8 +28,7 @@ export class HostelController {
     return this.hostelService.assignCaretaker(hostelId, assignCaretakerDto, user.id);
   }
 
-  // Hostel endpoints
-  @UseGuards(JwtAuthGuard, RolesGuard, SubscriptionGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('landlord')
   @Post()
   createHostel(@Body() createHostelDto: CreateHostelDto, @AuthUser() user: User) {
@@ -86,7 +85,7 @@ export class HostelController {
   }
 
   // Room endpoints
-  @UseGuards(JwtAuthGuard, RolesGuard, SubscriptionGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('landlord')
   @Post('rooms')
   createRoom(@Body() createRoomDto: CreateRoomDto) {
